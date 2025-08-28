@@ -1,6 +1,8 @@
 # mini-SIEM
 Full-Stack Cybersecurity Application - Log Analytics System
 
+This is a prototype version: without a database, saving in files.
+
 Articles:
 
 - [System Design Key Points: Log Collection and Analytic System](https://medium.com/@bugfreeai/system-design-key-points-log-collection-and-analytic-system-788a2e4e8ef3)
