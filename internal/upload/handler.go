@@ -83,6 +83,11 @@ func Handler() http.Handler { // no state yet; stateless handler factory
 		const maxAnoms = 50 // keep payload small; UI can highlight top findings
 		anoms := analyze.DetectRateSpikes(rows, maxAnoms)
 
+		// ensure empty slice instead of null in JSON
+		if anoms == nil {
+			anoms = []analyze.Anomaly{}
+		}
+
 		// Optional transparency note if we truncated rows.
 		note := ""
 		if sum.Lines > keepRows {
