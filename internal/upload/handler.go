@@ -9,18 +9,20 @@ import ( // imports required by the handler
 	"time"          // for timestamps in the response
 
 	"github.com/allensuvorov/tenexlog/internal/httputil" // local JSON helper and ID generator
-	"github.com/allensuvorov/tenexlog/internal/parse"    // NEW: our TSV parser for summary/timeline
+	"github.com/allensuvorov/tenexlog/internal/parse"    // parser (summary, timeline, rows)
 )
 
 // Results is the JSON we return after accepting an upload and parsing it.
-type Results struct { // public JSON struct (exported fields)
-	JobID     string         `json:"jobId"`     // unique ID for this upload "job"
-	Filename  string         `json:"filename"`  // original filename (client-provided)
-	SizeBytes int64          `json:"sizeBytes"` // size we streamed to disk (in bytes)
-	SavedTo   string         `json:"savedTo"`   // absolute path of the temp file (for debugging; remove later if desired)
-	Received  string         `json:"received"`  // RFC3339 timestamp when we handled the upload
-	Summary   parse.Summary  `json:"summary"`   // NEW: high-level stats from the file
-	Timeline  []parse.Bucket `json:"timeline"`  // NEW: per-minute counts for quick charting
+type Results struct {
+	JobID     string         `json:"jobId"`          // unique ID for this upload "job"
+	Filename  string         `json:"filename"`       // original filename (client-provided)
+	SizeBytes int64          `json:"sizeBytes"`      // size we streamed to disk (in bytes)
+	SavedTo   string         `json:"savedTo"`        // absolute path of the temp file (debug)
+	Received  string         `json:"received"`       // RFC3339 timestamp when we handled the upload
+	Summary   parse.Summary  `json:"summary"`        // high-level stats from the file
+	Timeline  []parse.Bucket `json:"timeline"`       // per-minute counts for quick charting
+	Rows      []parse.Event  `json:"rows"`           // NEW: first N parsed events for table rendering
+	Note      string         `json:"note,omitempty"` // optional transparency note (sampling, etc.)
 }
 
 // Handler returns an http.Handler that accepts POST /api/upload (multipart form "file").
@@ -63,24 +65,35 @@ func Handler() http.Handler { // no state yet; stateless handler factory
 			return                                                                 // stop execution
 		}
 
-		// Parse the saved file (minimal TSV: ts, srcIP, ...). Cap to 100k lines to keep prototype snappy.
-		const maxRows = 100_000                              // soft limit for quick iteration
-		sum, timeline, perr := parse.ParseTSV(dest, maxRows) // call into parser to compute stats
-		if perr != nil {                                     // handle parse errors gracefully
-			_ = os.Remove(dest)                                 // best-effort cleanup
-			http.Error(w, "parse error", http.StatusBadRequest) // 400 bad request (malformed file)
-			return                                              // stop execution
+		// Parse the saved file (summary, timeline, and a bounded number of rows).
+		const (
+			maxRowsScan = 100_000 // stop scanning after this many lines (performance guard)
+			keepRows    = 5_000   // keep only the first N events for table (memory guard)
+		)
+		sum, timeline, rows, perr := parse.ParseTSVRows(dest, maxRowsScan, keepRows)
+		if perr != nil {
+			_ = os.Remove(dest)
+			http.Error(w, "parse error", http.StatusBadRequest)
+			return
+		}
+
+		// Optional transparency message if we sampled.
+		note := ""
+		if sum.Lines > keepRows {
+			note = "Rows are truncated for display (showing first 5000). Full file was summarized."
 		}
 
 		// Build the response payload including parsed info.
-		resp := Results{ // initialize Results struct
-			JobID:     jobID,                                 // echo the generated job ID
-			Filename:  header.Filename,                       // original filename from client
-			SizeBytes: n,                                     // number of bytes saved
-			SavedTo:   dest,                                  // absolute path on disk (useful for manual testing)
-			Received:  time.Now().UTC().Format(time.RFC3339), // standardized timestamp in UTC
-			Summary:   sum,                                   // parsed high-level summary
-			Timeline:  timeline,                              // per-minute counts
+		resp := Results{
+			JobID:     jobID,
+			Filename:  header.Filename,
+			SizeBytes: n,
+			SavedTo:   dest,
+			Received:  time.Now().UTC().Format(time.RFC3339),
+			Summary:   sum,
+			Timeline:  timeline,
+			Rows:      rows,
+			Note:      note,
 		}
 
 		// Return 200 OK + JSON describing what we saved and what we parsed.
