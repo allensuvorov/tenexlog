@@ -1,36 +1,44 @@
 package main
 
-import ( // imports used in main
-	"log"      // for startup logs
-	"net/http" // HTTP server types
-	"os"       // env for ADDR
+import (
+	"log"
+	"net/http"
+	"os"
 
-	"github.com/allensuvorov/tenexlog/internal/auth"   // Basic Auth middleware
-	"github.com/allensuvorov/tenexlog/internal/upload" // our new upload handler
+	"github.com/allensuvorov/tenexlog/internal/auth"     // Basic Auth middleware
+	"github.com/allensuvorov/tenexlog/internal/httputil" // CORS middleware
+	"github.com/allensuvorov/tenexlog/internal/upload"   // /api/upload handler
 )
 
 func main() {
-	// Public mux (no auth).
-	public := http.NewServeMux()               // router for public endpoints
-	public.HandleFunc("GET /healthz", healthz) // health check remains public
+	// Public (no auth)
+	public := http.NewServeMux()
+	public.HandleFunc("GET /healthz", healthz)
 
-	// Protected mux (requires Basic Auth).
-	protected := http.NewServeMux()                        // router for endpoints that need auth
-	protected.HandleFunc("GET /ping", ping)                // already present ping endpoint
-	protected.Handle("POST /api/upload", upload.Handler()) // NEW: secure upload endpoint
+	// Protected routes (require auth for actual requests)
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /ping", ping)
+	protected.Handle("POST /api/upload", upload.Handler())
 
-	// Root mux mounts both: /healthz stays public, everything else requires auth.
-	root := http.NewServeMux()                       // top-level router
-	root.Handle("GET /healthz", public)              // mount public subtree
-	root.Handle("/", auth.EnvBasicAuth()(protected)) // wrap protected subtree with Basic Auth
-
-	// Address binding (defaults to :8080; can override with ADDR).
-	addr := ":8080"                      // default address/port
-	if v := os.Getenv("ADDR"); v != "" { // check if ADDR is set
-		addr = v // use custom address if provided
+	// Compose middlewares:
+	// 1) CORS OUTSIDE auth so browsers can preflight OPTIONS without credentials.
+	// 2) Auth wraps actual requests after CORS.
+	allowedOrigin := os.Getenv("CORS_ORIGIN") // e.g., "http://localhost:3000"
+	if allowedOrigin == "" {
+		allowedOrigin = "http://localhost:3000" // safe default for dev
 	}
+	protectedWithAuth := auth.EnvBasicAuth()(protected)
+	protectedWithCORS := httputil.CORS(allowedOrigin)(protectedWithAuth)
 
-	// Start the server.
-	log.Println("starting server on", addr)    // log startup info
-	log.Fatal(http.ListenAndServe(addr, root)) // block and serve (fatal on error)
+	// Root mux combines public + protected trees.
+	root := http.NewServeMux()
+	root.Handle("GET /healthz", public) // stays public
+	root.Handle("/", protectedWithCORS) // everything else behind CORS+Auth
+
+	addr := ":8080"
+	if v := os.Getenv("ADDR"); v != "" {
+		addr = v
+	}
+	log.Println("starting server on", addr, " (CORS origin:", allowedOrigin, ")")
+	log.Fatal(http.ListenAndServe(addr, root))
 }
