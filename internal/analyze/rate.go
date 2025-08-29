@@ -98,9 +98,13 @@ func DetectRateSpikes(rows []parse.Event, keepTop int) []Anomaly {
 			}
 
 			// Map z-score to [0,1] confidence using a smooth squash (1 - e^{-z/3}), clamped.
+			// Keep the confidence mapping, but you can bump it slightly for non-z paths:
 			conf := 1 - math.Exp(-z/3.0)
 			if conf > 1 {
 				conf = 1
+			}
+			if std == 0 && conf < 0.8 {
+				conf = 0.8
 			}
 
 			// Human-readable reason.
