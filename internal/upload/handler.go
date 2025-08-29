@@ -8,21 +8,23 @@ import ( // imports required by the handler
 	"path/filepath" // for building a path under /tmp
 	"time"          // for timestamps in the response
 
+	"github.com/allensuvorov/tenexlog/internal/analyze"  // NEW: anomaly detection
 	"github.com/allensuvorov/tenexlog/internal/httputil" // local JSON helper and ID generator
 	"github.com/allensuvorov/tenexlog/internal/parse"    // parser (summary, timeline, rows)
 )
 
 // Results is the JSON we return after accepting an upload and parsing it.
 type Results struct {
-	JobID     string         `json:"jobId"`          // unique ID for this upload "job"
-	Filename  string         `json:"filename"`       // original filename (client-provided)
-	SizeBytes int64          `json:"sizeBytes"`      // size we streamed to disk (in bytes)
-	SavedTo   string         `json:"savedTo"`        // absolute path of the temp file (debug)
-	Received  string         `json:"received"`       // RFC3339 timestamp when we handled the upload
-	Summary   parse.Summary  `json:"summary"`        // high-level stats from the file
-	Timeline  []parse.Bucket `json:"timeline"`       // per-minute counts for quick charting
-	Rows      []parse.Event  `json:"rows"`           // NEW: first N parsed events for table rendering
-	Note      string         `json:"note,omitempty"` // optional transparency note (sampling, etc.)
+	JobID     string            `json:"jobId"`          // unique ID for this upload "job"
+	Filename  string            `json:"filename"`       // original filename (client-provided)
+	SizeBytes int64             `json:"sizeBytes"`      // size we streamed to disk (in bytes)
+	SavedTo   string            `json:"savedTo"`        // absolute path of the temp file (debug)
+	Received  string            `json:"received"`       // RFC3339 timestamp when we handled the upload
+	Summary   parse.Summary     `json:"summary"`        // high-level stats from the file
+	Timeline  []parse.Bucket    `json:"timeline"`       // per-minute counts for quick charting
+	Rows      []parse.Event     `json:"rows"`           // first N parsed events for table rendering
+	Anomalies []analyze.Anomaly `json:"anomalies"`      // NEW: simple rate-spike findings
+	Note      string            `json:"note,omitempty"` // optional transparency note
 }
 
 // Handler returns an http.Handler that accepts POST /api/upload (multipart form "file").
@@ -77,13 +79,17 @@ func Handler() http.Handler { // no state yet; stateless handler factory
 			return
 		}
 
-		// Optional transparency message if we sampled.
+		// Run a tiny, explainable anomaly detector over the parsed rows.
+		const maxAnoms = 50 // keep payload small; UI can highlight top findings
+		anoms := analyze.DetectRateSpikes(rows, maxAnoms)
+
+		// Optional transparency note if we truncated rows.
 		note := ""
 		if sum.Lines > keepRows {
-			note = "Rows are truncated for display (showing first 5000). Full file was summarized."
+			note = "Rows are truncated for display (showing first 5000). Summary/anomalies are computed over scanned portion."
 		}
 
-		// Build the response payload including parsed info.
+		// Build the response payload including anomalies.
 		resp := Results{
 			JobID:     jobID,
 			Filename:  header.Filename,
@@ -93,6 +99,7 @@ func Handler() http.Handler { // no state yet; stateless handler factory
 			Summary:   sum,
 			Timeline:  timeline,
 			Rows:      rows,
+			Anomalies: anoms, // include anomaly findings
 			Note:      note,
 		}
 
