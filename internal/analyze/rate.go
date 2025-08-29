@@ -84,16 +84,17 @@ func DetectRateSpikes(rows []parse.Event, keepTop int) []Anomaly {
 			var z float64
 			if std > 0 {
 				z = (c - mean) / std
-				if z < 3.0 { // classic "3-sigma" rule
+				// OLD: if z < 3.0 { continue }
+				// NEW (friendlier for small samples):
+				if !(z >= 2.0 || c >= math.Max(math.Ceil(2.5*mean), absFloor)) {
 					continue
 				}
 			} else {
-				// no variance: only flag if it's a clear jump relative to its own baseline
-				if !(mean > 0 && c >= 2*mean) {
+				// no variance: require a clear jump
+				if !(mean > 0 && c >= 2.5*mean && c >= absFloor) {
 					continue
 				}
-				// define a pseudo-z for confidence; 2x mean ≈ z=3 for display purposes
-				z = 3.0
+				z = 3.0 // pseudo-z for confidence display
 			}
 
 			// Map z-score to [0,1] confidence using a smooth squash (1 - e^{-z/3}), clamped.
