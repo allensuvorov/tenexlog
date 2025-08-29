@@ -1,34 +1,36 @@
 package main
 
-import (
-	"log"
-	"net/http"
-	"os"
+import ( // imports used in main
+	"log"      // for startup logs
+	"net/http" // HTTP server types
+	"os"       // env for ADDR
 
-	"github.com/allensuvorov/tenexlog/internal/auth"
+	"github.com/allensuvorov/tenexlog/internal/auth"   // Basic Auth middleware
+	"github.com/allensuvorov/tenexlog/internal/upload" // our new upload handler
 )
 
 func main() {
-	public := http.NewServeMux()
-	protected := http.NewServeMux()
+	// Public mux (no auth).
+	public := http.NewServeMux()               // router for public endpoints
+	public.HandleFunc("GET /healthz", healthz) // health check remains public
 
-	// public
-	public.HandleFunc("GET /healthz", healthz)
+	// Protected mux (requires Basic Auth).
+	protected := http.NewServeMux()                        // router for endpoints that need auth
+	protected.HandleFunc("GET /ping", ping)                // already present ping endpoint
+	protected.Handle("POST /api/upload", upload.Handler()) // NEW: secure upload endpoint
 
-	// protected
-	protected.HandleFunc("GET /ping", ping)
-	// (We’ll add /api/upload here next)
+	// Root mux mounts both: /healthz stays public, everything else requires auth.
+	root := http.NewServeMux()                       // top-level router
+	root.Handle("GET /healthz", public)              // mount public subtree
+	root.Handle("/", auth.EnvBasicAuth()(protected)) // wrap protected subtree with Basic Auth
 
-	// mount: everything except /healthz requires auth
-	root := http.NewServeMux()
-	root.Handle("GET /healthz", public)
-	root.Handle("/", auth.EnvBasicAuth()(protected))
-
-	addr := ":8080"
-	if v := os.Getenv("ADDR"); v != "" {
-		addr = v
+	// Address binding (defaults to :8080; can override with ADDR).
+	addr := ":8080"                      // default address/port
+	if v := os.Getenv("ADDR"); v != "" { // check if ADDR is set
+		addr = v // use custom address if provided
 	}
 
-	log.Println("starting server on", addr)
-	log.Fatal(http.ListenAndServe(addr, root))
+	// Start the server.
+	log.Println("starting server on", addr)    // log startup info
+	log.Fatal(http.ListenAndServe(addr, root)) // block and serve (fatal on error)
 }
