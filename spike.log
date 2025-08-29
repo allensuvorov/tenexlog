@@ -1,0 +1,16 @@
+2025-08-28T10:00:00Z	9.9.9.9	example.com	GET	/	200	1	UA
+2025-08-28T10:02:00Z	9.9.9.9	example.com	GET	/	200	1	UA
+2025-08-28T10:03:00Z	9.9.9.9	example.com	GET	/	200	1	UA
+# burst at 10:04 (12 lines)
+2025-08-28T10:04:00Z	9.9.9.9	example.com	GET	/a	200	1	UA
+2025-08-28T10:04:05Z	9.9.9.9	example.com	GET	/b	200	1	UA
+2025-08-28T10:04:10Z	9.9.9.9	example.com	GET	/c	200	1	UA
+2025-08-28T10:04:15Z	9.9.9.9	example.com	GET	/d	200	1	UA
+2025-08-28T10:04:20Z	9.9.9.9	example.com	GET	/e	200	1	UA
+2025-08-28T10:04:25Z	9.9.9.9	example.com	GET	/f	200	1	UA
+2025-08-28T10:04:30Z	9.9.9.9	example.com	GET	/g	200	1	UA
+2025-08-28T10:04:35Z	9.9.9.9	example.com	GET	/h	200	1	UA
+2025-08-28T10:04:40Z	9.9.9.9	example.com	GET	/i	200	1	UA
+2025-08-28T10:04:45Z	9.9.9.9	example.com	GET	/j	200	1	UA
+2025-08-28T10:04:50Z	9.9.9.9	example.com	GET	/k	200	1	UA
+2025-08-28T10:04:55Z	9.9.9.9	example.com	GET	/l	200	1	UA
