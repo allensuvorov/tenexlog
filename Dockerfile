@@ -1,15 +1,19 @@
 # ---- Build stage ----
-FROM golang:1.22 AS build
+# was: FROM golang:1.22 AS build
+FROM golang:1.25 AS build
+
+# Let Go auto-fetch matching toolchains if needed (optional but nice).
+ENV GOTOOLCHAIN=auto
+
 WORKDIR /src
 
-# Copy only go.mod (since no go.sum)
+# You have no external deps; keep this simple
 COPY go.mod ./
-RUN go mod download || true   # this will succeed even with no dependencies
+RUN go mod download || true
 
-# Copy the rest of the source
 COPY . .
 
-# Build the API binary
+# Build your API
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /bin/tenexlog ./cmd/api
 
