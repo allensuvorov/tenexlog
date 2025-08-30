@@ -106,7 +106,7 @@ function TimelineChart({ timeline }: { timeline: Bucket[] }) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="x" tick={{ fontSize: 12 }} />
             <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-            <Tooltip formatter={(v: any) => [v, "Count"]} labelFormatter={(l) => `UTC ${l}`} />
+            <Tooltip formatter={(v: number) => [v, "Count"]} labelFormatter={(l: string) => `UTC ${l}`} />
             <Line type="monotone" dataKey="y" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
@@ -143,8 +143,10 @@ export default function UploadPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const json = (await res.json()) as ApiResponse;
       setData(json);
-    } catch (err: any) {
-      setError(err?.message ?? "Upload failed");
+    } catch (err) {
+      // err is unknown, but can be narrowed for message
+      if (err instanceof Error) setError(err.message);
+      else setError("Upload failed");
     } finally {
       setBusy(false);
     }
