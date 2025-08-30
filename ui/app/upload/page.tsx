@@ -1,19 +1,11 @@
-"use client"; // mark as client component (we use hooks & browser APIs)
+"use client";
 
 import React, { useMemo, useState } from "react";
-
-// ▼ NEW: Recharts bits we need (kept minimal for a small line chart)
 import {
-  LineChart,          // chart container
-  Line,               // the series line
-  XAxis,              // x axis (labels)
-  YAxis,              // y axis (counts)
-  Tooltip,            // hover tooltip
-  CartesianGrid,      // grid lines
-  ResponsiveContainer // auto-resizes to parent
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer
 } from "recharts";
 
-// ---- Types matching your API (unchanged) ----
+// ----- types (same as before) -----
 type Summary = { lines: number; uniqueIPs: number; start?: string; end?: string };
 type Bucket = { t: string; count: number };
 type Row = { ts?: string; srcIp?: string; dst?: string; method?: string; path?: string; status?: number; bytes?: number; ua?: string };
@@ -29,15 +21,10 @@ type ApiResponse = {
   summary: Summary; timeline: Bucket[]; rows: Row[]; anomalies: AnyAnom[]; note?: string;
 };
 
-// ---- Small helpers ----
-
-// Build Basic header from username/password (browser-safe base64).
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 function basicHeader(user: string, pass: string): string { return "Basic " + btoa(`${user}:${pass}`); }
 
-// Read API base (set via .env.local).
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
-
-// Format an ISO minute → "HH:MM" (UTC) for x-axis labels.
+// ---------- helpers ----------
 function hhmm(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -45,20 +32,71 @@ function hhmm(iso?: string): string {
   const m = String(d.getUTCMinutes()).padStart(2, "0");
   return `${h}:${m}`;
 }
-
-// Convert backend buckets → Recharts data [{x, y, iso}]
 function toChartData(buckets: Bucket[]) {
   return (buckets ?? []).map(b => ({ x: hhmm(b.t), y: b.count, iso: b.t }));
 }
 
-// ---- NEW: Tiny timeline chart component ----
+// Same sensitive prefix list as backend (keep in sync if you change it there).
+const SENSITIVE_PREFIXES = [
+  "/admin", "/login", "/wp-admin", "/wp-login", "/xmlrpc.php",
+  "/.git", "/.env", "/.ds_store", "/.well-known", "/server-status",
+  "/phpmyadmin", "/manager", "/actuator", "/console",
+];
+
+// Lowercase startsWith check.
+function isSensitivePath(path?: string): boolean {
+  if (!path) return false;
+  const p = path.toLowerCase();
+  return SENSITIVE_PREFIXES.some(pref => p.startsWith(pref));
+}
+
+// Build lookup maps from anomalies for fast row highlighting.
+// - spikeMinutesByIP: ip -> Set( "YYYY-MM-DDTHH:MM:00Z" minute-ISO )
+// - sensitiveIPs: Set(ip) (we’ll also check path prefix to avoid over-highlighting)
+function buildHighlightIndexes(anoms: AnyAnom[] | undefined) {
+  const spikeMinutesByIP = new Map<string, Set<string>>();
+  const sensitiveIPs = new Set<string>();
+
+  (anoms ?? []).forEach(a => {
+    if (a.kind === "rate_spike" && a.srcIp && a.minute) {
+      const set = spikeMinutesByIP.get(a.srcIp) ?? new Set<string>();
+      // Normalize minute string: ensure it’s exactly the minute (server sends RFC3339 minute already).
+      set.add(new Date(a.minute).toISOString().slice(0, 16)); // keep "YYYY-MM-DDTHH:MM"
+      spikeMinutesByIP.set(a.srcIp, set);
+    }
+    if (a.kind === "sensitive_paths" && a.srcIp) {
+      sensitiveIPs.add(a.srcIp);
+    }
+  });
+
+  return { spikeMinutesByIP, sensitiveIPs };
+}
+
+// Check if a row should be highlighted as spike and/or sensitive.
+function classifyRow(r: Row, spikeMinutesByIP: Map<string, Set<string>>, sensitiveIPs: Set<string>) {
+  let spike = false, sensitive = false;
+
+  if (r.ts && r.srcIp) {
+    const minuteKey = new Date(r.ts).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+    const set = spikeMinutesByIP.get(r.srcIp);
+    if (set && set.has(minuteKey)) {
+      spike = true;
+    }
+  }
+
+  if (r.srcIp && sensitiveIPs.has(r.srcIp) && isSensitivePath(r.path)) {
+    sensitive = true;
+  }
+
+  return { spike, sensitive };
+}
+
+// ---------- chart ----------
 function TimelineChart({ timeline }: { timeline: Bucket[] }) {
   const data = useMemo(() => toChartData(timeline), [timeline]);
-
   if (!data.length) {
     return <div className="border rounded p-3 text-sm text-gray-500">No timeline data to display.</div>;
   }
-
   return (
     <div className="border rounded p-3">
       <div className="font-medium mb-2">Timeline (events per minute, UTC)</div>
@@ -68,10 +106,7 @@ function TimelineChart({ timeline }: { timeline: Bucket[] }) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="x" tick={{ fontSize: 12 }} />
             <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-            <Tooltip
-              formatter={(value: any) => [value, "Count"]}
-              labelFormatter={(label) => `UTC ${label}`}
-            />
+            <Tooltip formatter={(v: any) => [v, "Count"]} labelFormatter={(l) => `UTC ${l}`} />
             <Line type="monotone" dataKey="y" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
@@ -80,8 +115,8 @@ function TimelineChart({ timeline }: { timeline: Bucket[] }) {
   );
 }
 
+// ---------- page ----------
 export default function UploadPage() {
-  // ---- form / state (existing) ----
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -96,12 +131,10 @@ export default function UploadPage() {
     setError(null);
     setData(null);
     if (!file) return;
-
     try {
       setBusy(true);
       const fd = new FormData();
       fd.append("file", file);
-
       const res = await fetch(`${API_BASE}/api/upload`, {
         method: "POST",
         headers: { Authorization: basicHeader(user, pass) },
@@ -117,6 +150,9 @@ export default function UploadPage() {
     }
   }
 
+  // Build highlight indexes (memoized) once the response arrives.
+  const highlight = useMemo(() => buildHighlightIndexes(data?.anomalies), [data?.anomalies]);
+
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Tenex Log Uploader (Prototype)</h1>
@@ -124,19 +160,18 @@ export default function UploadPage() {
         This page calls <code>{API_BASE}/api/upload</code> with HTTP Basic Auth and displays the JSON result.
       </p>
 
-      {/* form (existing) */}
       <form onSubmit={onSubmit} className="space-y-4 border rounded-lg p-4">
         <div className="flex flex-col">
           <label className="text-sm font-medium">Username</label>
-          <input type="text" value={user} onChange={(e) => setUser(e.target.value)} placeholder="BASIC_USER" className="border rounded px-3 py-2" autoComplete="username" required />
+          <input className="border rounded px-3 py-2" type="text" value={user} onChange={(e) => setUser(e.target.value)} placeholder="BASIC_USER" autoComplete="username" required />
         </div>
         <div className="flex flex-col">
           <label className="text-sm font-medium">Password</label>
-          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="BASIC_PASS" className="border rounded px-3 py-2" autoComplete="current-password" required />
+          <input className="border rounded px-3 py-2" type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="BASIC_PASS" autoComplete="current-password" required />
         </div>
         <div className="flex flex-col">
           <label className="text-sm font-medium">Log file (.log / .txt, TSV)</label>
-          <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} accept=".log,.txt,text/plain" className="border rounded px-3 py-2" required />
+          <input className="border rounded px-3 py-2" type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} accept=".log,.txt,text/plain" required />
           <p className="text-xs text-gray-500 mt-1">
             Expected minimal columns: ts (RFC3339), srcIP, dst, method, path, status, bytes, ua (tab-separated).
           </p>
@@ -152,12 +187,11 @@ export default function UploadPage() {
         {error && <div className="text-sm text-red-600">{error}</div>}
       </form>
 
-      {/* ▼ NEW: timeline chart right after form */}
       {data && <TimelineChart timeline={data.timeline} />}
 
-      {/* existing summary / anomalies / rows */}
       {data && (
         <section className="space-y-4">
+          {/* summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="border rounded p-3"><div className="text-xs text-gray-500">Lines</div><div className="text-lg font-semibold">{data.summary.lines}</div></div>
             <div className="border rounded p-3"><div className="text-xs text-gray-500">Unique IPs</div><div className="text-lg font-semibold">{data.summary.uniqueIPs}</div></div>
@@ -165,6 +199,7 @@ export default function UploadPage() {
             <div className="border rounded p-3"><div className="text-xs text-gray-500">End</div><div className="text-sm">{data.summary.end ?? "—"}</div></div>
           </div>
 
+          {/* anomalies list */}
           <div className="border rounded p-3">
             <div className="font-medium mb-2">Anomalies ({data.anomalies?.length ?? 0})</div>
             {(!data.anomalies || data.anomalies.length === 0) && (<div className="text-sm text-gray-500">No anomalies detected.</div>)}
@@ -183,6 +218,13 @@ export default function UploadPage() {
             </ul>
           </div>
 
+          {/* legend for row highlights */}
+          <div className="text-xs text-gray-500">
+            <span className="inline-block px-2 py-1 rounded mr-2" style={{ background: "rgba(59,130,246,0.15)" }}>rate spike</span>
+            <span className="inline-block px-2 py-1 rounded" style={{ background: "rgba(244,63,94,0.15)" }}>sensitive path</span>
+          </div>
+
+          {/* rows table with highlighting */}
           <div className="border rounded p-3 overflow-x-auto">
             <div className="font-medium mb-2">Rows (showing up to 20)</div>
             <table className="min-w-full text-sm">
@@ -198,17 +240,25 @@ export default function UploadPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data.rows ?? []).slice(0, 20).map((r, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="px-2 py-1">{r.ts ?? ""}</td>
-                    <td className="px-2 py-1">{r.srcIp ?? ""}</td>
-                    <td className="px-2 py-1">{r.dst ?? ""}</td>
-                    <td className="px-2 py-1">{r.method ?? ""}</td>
-                    <td className="px-2 py-1">{r.path ?? ""}</td>
-                    <td className="px-2 py-1">{r.status ?? ""}</td>
-                    <td className="px-2 py-1">{r.bytes ?? ""}</td>
-                  </tr>
-                ))}
+                {(data.rows ?? []).slice(0, 20).map((r, i) => {
+                  const { spike, sensitive } = classifyRow(r, highlight.spikeMinutesByIP, highlight.sensitiveIPs);
+                  // choose a background: blue-ish for spike, red-ish for sensitive, purple-ish if both
+                  let bg = "";
+                  if (spike && sensitive) bg = "rgba(147,51,234,0.18)";       // both → violet
+                  else if (spike)          bg = "rgba(59,130,246,0.15)";       // spike → blue
+                  else if (sensitive)      bg = "rgba(244,63,94,0.15)";        // sensitive → red
+                  return (
+                    <tr key={i} className="border-t" style={{ background: bg }}>
+                      <td className="px-2 py-1">{r.ts ?? ""}</td>
+                      <td className="px-2 py-1">{r.srcIp ?? ""}</td>
+                      <td className="px-2 py-1">{r.dst ?? ""}</td>
+                      <td className="px-2 py-1">{r.method ?? ""}</td>
+                      <td className="px-2 py-1">{r.path ?? ""}</td>
+                      <td className="px-2 py-1">{r.status ?? ""}</td>
+                      <td className="px-2 py-1">{r.bytes ?? ""}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
