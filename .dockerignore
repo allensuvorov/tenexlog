@@ -1,0 +1,17 @@
+# VCS
+.git
+.gitignore
+
+# macOS
+.DS_Store
+
+# Node / UI
+ui/
+**/node_modules
+npm-debug.log
+yarn.lock
+pnpm-lock.yaml
+
+# Local builds
+bin/
+dist/
