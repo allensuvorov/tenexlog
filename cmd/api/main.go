@@ -35,8 +35,11 @@ func main() {
 	root.Handle("GET /healthz", public) // stays public
 	root.Handle("/", protectedWithCORS) // everything else behind CORS+Auth
 
-	addr := ":8080"
-	if v := os.Getenv("ADDR"); v != "" {
+	addr := ":8080"                      // default
+	if p := os.Getenv("PORT"); p != "" { // Fly inject this
+		addr = ":" + p
+	}
+	if v := os.Getenv("ADDR"); v != "" { // manual override still works
 		addr = v
 	}
 	log.Println("starting server on", addr, " (CORS origin:", allowedOrigin, ")")
