@@ -83,8 +83,9 @@ All detected anomalies are merged into a single array for the frontend, where ma
 
 1. Open [http://localhost:3000/upload](http://localhost:3000/upload) in your browser.
 2. Enter your Basic Auth credentials (`alice` / `s3cret` by default).
-3. Upload a `.log` or `.txt` file (tab-separated columns: `ts, srcIP, dst, method, path, status, bytes, ua`).
-4. View summary stats, timeline chart, anomaly list, and highlighted log rows.
+3. Upload a `.log` or `.txt` file (tab-separated columns: `ts, srcIP, dst, method, path, status, bytes, ua`). 
+4. Sample log files for testing can be found in the [`examples/`](examples/) directory.
+5. View summary stats, timeline chart, anomaly list, and highlighted log rows.
 
 ---
 
