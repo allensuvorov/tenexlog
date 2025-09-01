@@ -5,7 +5,6 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer
 } from "recharts";
 
-// ----- types (same as before) -----
 type Summary = { lines: number; uniqueIPs: number; start?: string; end?: string };
 type Bucket = { t: string; count: number };
 type Row = { ts?: string; srcIp?: string; dst?: string; method?: string; path?: string; status?: number; bytes?: number; ua?: string };
@@ -24,7 +23,6 @@ type ApiResponse = {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 function basicHeader(user: string, pass: string): string { return "Basic " + btoa(`${user}:${pass}`); }
 
-// ---------- helpers ----------
 function hhmm(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -36,23 +34,18 @@ function toChartData(buckets: Bucket[]) {
   return (buckets ?? []).map(b => ({ x: hhmm(b.t), y: b.count, iso: b.t }));
 }
 
-// Same sensitive prefix list as backend (keep in sync if you change it there).
 const SENSITIVE_PREFIXES = [
   "/admin", "/login", "/wp-admin", "/wp-login", "/xmlrpc.php",
   "/.git", "/.env", "/.ds_store", "/.well-known", "/server-status",
   "/phpmyadmin", "/manager", "/actuator", "/console",
 ];
 
-// Lowercase startsWith check.
 function isSensitivePath(path?: string): boolean {
   if (!path) return false;
   const p = path.toLowerCase();
   return SENSITIVE_PREFIXES.some(pref => p.startsWith(pref));
 }
 
-// Build lookup maps from anomalies for fast row highlighting.
-// - spikeMinutesByIP: ip -> Set( "YYYY-MM-DDTHH:MM:00Z" minute-ISO )
-// - sensitiveIPs: Set(ip) (we’ll also check path prefix to avoid over-highlighting)
 function buildHighlightIndexes(anoms: AnyAnom[] | undefined) {
   const spikeMinutesByIP = new Map<string, Set<string>>();
   const sensitiveIPs = new Set<string>();
@@ -60,8 +53,7 @@ function buildHighlightIndexes(anoms: AnyAnom[] | undefined) {
   (anoms ?? []).forEach(a => {
     if (a.kind === "rate_spike" && a.srcIp && a.minute) {
       const set = spikeMinutesByIP.get(a.srcIp) ?? new Set<string>();
-      // Normalize minute string: ensure it’s exactly the minute (server sends RFC3339 minute already).
-      set.add(new Date(a.minute).toISOString().slice(0, 16)); // keep "YYYY-MM-DDTHH:MM"
+      set.add(new Date(a.minute).toISOString().slice(0, 16));
       spikeMinutesByIP.set(a.srcIp, set);
     }
     if (a.kind === "sensitive_paths" && a.srcIp) {
@@ -72,12 +64,11 @@ function buildHighlightIndexes(anoms: AnyAnom[] | undefined) {
   return { spikeMinutesByIP, sensitiveIPs };
 }
 
-// Check if a row should be highlighted as spike and/or sensitive.
 function classifyRow(r: Row, spikeMinutesByIP: Map<string, Set<string>>, sensitiveIPs: Set<string>) {
   let spike = false, sensitive = false;
 
   if (r.ts && r.srcIp) {
-    const minuteKey = new Date(r.ts).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+    const minuteKey = new Date(r.ts).toISOString().slice(0, 16);
     const set = spikeMinutesByIP.get(r.srcIp);
     if (set && set.has(minuteKey)) {
       spike = true;
@@ -91,7 +82,6 @@ function classifyRow(r: Row, spikeMinutesByIP: Map<string, Set<string>>, sensiti
   return { spike, sensitive };
 }
 
-// ---------- chart ----------
 function TimelineChart({ timeline }: { timeline: Bucket[] }) {
   const data = useMemo(() => toChartData(timeline), [timeline]);
   if (!data.length) {
@@ -115,7 +105,6 @@ function TimelineChart({ timeline }: { timeline: Bucket[] }) {
   );
 }
 
-// ---------- page ----------
 export default function UploadPage() {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -144,7 +133,6 @@ export default function UploadPage() {
       const json = (await res.json()) as ApiResponse;
       setData(json);
     } catch (err) {
-      // err is unknown, but can be narrowed for message
       if (err instanceof Error) setError(err.message);
       else setError("Upload failed");
     } finally {
@@ -152,7 +140,6 @@ export default function UploadPage() {
     }
   }
 
-  // Build highlight indexes (memoized) once the response arrives.
   const highlight = useMemo(() => buildHighlightIndexes(data?.anomalies), [data?.anomalies]);
 
   return (
@@ -193,7 +180,6 @@ export default function UploadPage() {
 
       {data && (
         <section className="space-y-4">
-          {/* summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="border rounded p-3"><div className="text-xs text-gray-500">Lines</div><div className="text-lg font-semibold">{data.summary.lines}</div></div>
             <div className="border rounded p-3"><div className="text-xs text-gray-500">Unique IPs</div><div className="text-lg font-semibold">{data.summary.uniqueIPs}</div></div>
@@ -201,7 +187,6 @@ export default function UploadPage() {
             <div className="border rounded p-3"><div className="text-xs text-gray-500">End</div><div className="text-sm">{data.summary.end ?? "—"}</div></div>
           </div>
 
-          {/* anomalies list */}
           <div className="border rounded p-3">
             <div className="font-medium mb-2">Anomalies ({data.anomalies?.length ?? 0})</div>
             {(!data.anomalies || data.anomalies.length === 0) && (<div className="text-sm text-gray-500">No anomalies detected.</div>)}
@@ -220,13 +205,11 @@ export default function UploadPage() {
             </ul>
           </div>
 
-          {/* legend for row highlights */}
           <div className="text-xs text-gray-500">
             <span className="inline-block px-2 py-1 rounded mr-2" style={{ background: "rgba(59,130,246,0.15)" }}>rate spike</span>
             <span className="inline-block px-2 py-1 rounded" style={{ background: "rgba(244,63,94,0.15)" }}>sensitive path</span>
           </div>
 
-          {/* rows table with highlighting */}
           <div className="border rounded p-3 overflow-x-auto">
             <div className="font-medium mb-2">Rows (showing up to 20)</div>
             <table className="min-w-full text-sm">
@@ -244,11 +227,10 @@ export default function UploadPage() {
               <tbody>
                 {(data.rows ?? []).slice(0, 20).map((r, i) => {
                   const { spike, sensitive } = classifyRow(r, highlight.spikeMinutesByIP, highlight.sensitiveIPs);
-                  // choose a background: blue-ish for spike, red-ish for sensitive, purple-ish if both
                   let bg = "";
-                  if (spike && sensitive) bg = "rgba(147,51,234,0.18)";       // both → violet
-                  else if (spike)          bg = "rgba(59,130,246,0.15)";       // spike → blue
-                  else if (sensitive)      bg = "rgba(244,63,94,0.15)";        // sensitive → red
+                  if (spike && sensitive) bg = "rgba(147,51,234,0.18)";
+                  else if (spike)          bg = "rgba(59,130,246,0.15)";
+                  else if (sensitive)      bg = "rgba(244,63,94,0.15)";
                   return (
                     <tr key={i} className="border-t" style={{ background: bg }}>
                       <td className="px-2 py-1">{r.ts ?? ""}</td>
@@ -270,4 +252,3 @@ export default function UploadPage() {
       )}
     </main>
   );
-}
