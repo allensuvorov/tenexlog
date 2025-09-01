@@ -5,41 +5,35 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/allensuvorov/tenexlog/internal/auth"     // Basic Auth middleware
-	"github.com/allensuvorov/tenexlog/internal/httputil" // CORS middleware
-	"github.com/allensuvorov/tenexlog/internal/upload"   // /api/upload handler
+	"github.com/allensuvorov/tenexlog/internal/auth"
+	"github.com/allensuvorov/tenexlog/internal/httputil"
+	"github.com/allensuvorov/tenexlog/internal/upload"
 )
 
 func main() {
-	// Public (no auth)
 	public := http.NewServeMux()
 	public.HandleFunc("GET /healthz", healthz)
 
-	// Protected routes (require auth for actual requests)
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /ping", ping)
 	protected.Handle("POST /api/upload", upload.Handler())
 
-	// Compose middlewares:
-	// 1) CORS OUTSIDE auth so browsers can preflight OPTIONS without credentials.
-	// 2) Auth wraps actual requests after CORS.
-	allowedOrigin := os.Getenv("CORS_ORIGIN") // e.g., "http://localhost:3000"
+	allowedOrigin := os.Getenv("CORS_ORIGIN")
 	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:3000" // safe default for dev
+		allowedOrigin = "http://localhost:3000"
 	}
 	protectedWithAuth := auth.EnvBasicAuth()(protected)
 	protectedWithCORS := httputil.CORS(allowedOrigin)(protectedWithAuth)
 
-	// Root mux combines public + protected trees.
 	root := http.NewServeMux()
-	root.Handle("GET /healthz", public) // stays public
-	root.Handle("/", protectedWithCORS) // everything else behind CORS+Auth
+	root.Handle("GET /healthz", public)
+	root.Handle("/", protectedWithCORS)
 
-	addr := ":8080"                      // default
-	if p := os.Getenv("PORT"); p != "" { // Fly inject this
+	addr := ":8080"
+	if p := os.Getenv("PORT"); p != "" {
 		addr = ":" + p
 	}
-	if v := os.Getenv("ADDR"); v != "" { // manual override still works
+	if v := os.Getenv("ADDR"); v != "" {
 		addr = v
 	}
 	log.Println("starting server on", addr, " (CORS origin:", allowedOrigin, ")")
