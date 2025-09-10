@@ -1,5 +1,4 @@
 # ---- Build stage ----
-# was: FROM golang:1.22 AS build
 FROM golang:1.25 AS build
 
 # Let Go auto-fetch matching toolchains if needed (optional but nice).
