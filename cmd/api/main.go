@@ -16,7 +16,7 @@ func main() {
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /ping", ping)
-	protected.Handle("POST /api/upload", upload.Handler())
+	protected.HandleFunc("POST /api/upload", upload.Handler)
 
 	allowedOrigin := os.Getenv("CORS_ORIGIN")
 	if allowedOrigin == "" {

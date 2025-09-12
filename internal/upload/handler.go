@@ -2,6 +2,7 @@ package upload
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -40,119 +41,125 @@ type Results struct {
 	Note      string         `json:"note,omitempty"`
 }
 
-func Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+// func Handler() http.Handler {
+// return http.HandlerFunc(
 
-		file, header, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, "file field 'file' is required", http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
+func Handler(w http.ResponseWriter, r *http.Request) {
+	log.Println("Upload and analyse Handler - start")
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-		jobID := httputil.NewID()
-		dest := filepath.Join(os.TempDir(), jobID+".log")
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "file field 'file' is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
 
-		out, err := os.Create(dest)
-		if err != nil {
-			http.Error(w, "could not create temp file", http.StatusInternalServerError)
-			return
-		}
+	jobID := httputil.NewID()
+	dest := filepath.Join(os.TempDir(), jobID+".log")
 
-		n, copyErr := io.Copy(out, file)
-		closeErr := out.Close()
+	out, err := os.Create(dest)
+	if err != nil {
+		http.Error(w, "could not create temp file", http.StatusInternalServerError)
+		return
+	}
 
-		if copyErr != nil || closeErr != nil {
-			_ = os.Remove(dest)
-			http.Error(w, "failed to save upload", http.StatusInternalServerError)
-			return
-		}
+	n, copyErr := io.Copy(out, file)
+	closeErr := out.Close()
 
-		const (
-			maxRowsScan = 100_000
-			keepRows    = 5_000
-		)
-		sum, timeline, rows, perr := parse.ParseTSVRows(dest, maxRowsScan, keepRows)
-		if perr != nil {
-			_ = os.Remove(dest)
-			http.Error(w, "parse error", http.StatusBadRequest)
-			return
-		}
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(dest)
+		http.Error(w, "failed to save upload", http.StatusInternalServerError)
+		return
+	}
 
-		const maxAnoms = 50
-		rateAnoms := analyze.DetectRateSpikes(rows, maxAnoms)
+	const (
+		maxRowsScan = 100_000
+		keepRows    = 5_000
+	)
+	sum, timeline, rows, perr := parse.ParseTSVRows(dest, maxRowsScan, keepRows)
+	if perr != nil {
+		_ = os.Remove(dest)
+		http.Error(w, "parse error", http.StatusBadRequest)
+		return
+	}
 
-		const (
-			minHits   = 5
-			minUnique = 2
-		)
-		sensAnoms := analyze.DetectSensitivePaths(rows, minHits, minUnique)
+	const maxAnoms = 50
+	rateAnoms := analyze.DetectRateSpikes(rows, maxAnoms)
 
-		merged := make([]anyAnom, 0, len(rateAnoms)+len(sensAnoms))
+	const (
+		minHits   = 5
+		minUnique = 2
+	)
+	sensAnoms := analyze.DetectSensitivePaths(rows, minHits, minUnique)
 
-		for _, a := range rateAnoms {
-			m := a.Minute
-			c := a.Count
-			b := a.Baseline
-			z := a.Z
-			merged = append(merged, anyAnom{
-				Kind:       a.Kind,
-				SrcIP:      a.SrcIP,
-				Minute:     &m,
-				Count:      &c,
-				Baseline:   &b,
-				Z:          &z,
-				Confidence: a.Confidence,
-				Reason:     a.Reason,
-			})
-		}
+	merged := make([]anyAnom, 0, len(rateAnoms)+len(sensAnoms))
 
-		for _, s := range sensAnoms {
-			fs, ls := s.FirstSeen, s.LastSeen
-			h, u := s.Hits, s.UniquePref
-			merged = append(merged, anyAnom{
-				Kind:       s.Kind,
-				SrcIP:      s.SrcIP,
-				FirstSeen:  &fs,
-				LastSeen:   &ls,
-				Hits:       &h,
-				UniquePref: &u,
-				Confidence: s.Confidence,
-				Reason:     s.Reason,
-			})
-		}
+	for _, a := range rateAnoms {
+		m := a.Minute
+		c := a.Count
+		b := a.Baseline
+		z := a.Z
+		merged = append(merged, anyAnom{
+			Kind:       a.Kind,
+			SrcIP:      a.SrcIP,
+			Minute:     &m,
+			Count:      &c,
+			Baseline:   &b,
+			Z:          &z,
+			Confidence: a.Confidence,
+			Reason:     a.Reason,
+		})
+	}
 
-		if len(merged) > maxAnoms {
-			merged = merged[:maxAnoms]
-		}
+	for _, s := range sensAnoms {
+		fs, ls := s.FirstSeen, s.LastSeen
+		h, u := s.Hits, s.UniquePref
+		merged = append(merged, anyAnom{
+			Kind:       s.Kind,
+			SrcIP:      s.SrcIP,
+			FirstSeen:  &fs,
+			LastSeen:   &ls,
+			Hits:       &h,
+			UniquePref: &u,
+			Confidence: s.Confidence,
+			Reason:     s.Reason,
+		})
+	}
 
-		if merged == nil {
-			merged = []anyAnom{}
-		}
+	if len(merged) > maxAnoms {
+		merged = merged[:maxAnoms]
+	}
 
-		note := ""
-		if sum.Lines > keepRows {
-			note = "Rows are truncated for display (showing first 5000). Summary/anomalies are computed over the scanned portion."
-		}
+	if merged == nil {
+		merged = []anyAnom{}
+	}
 
-		resp := Results{
-			JobID:     jobID,
-			Filename:  header.Filename,
-			SizeBytes: n,
-			SavedTo:   dest,
-			Received:  time.Now().UTC().Format(time.RFC3339),
-			Summary:   sum,
-			Timeline:  timeline,
-			Rows:      rows,
-			Anomalies: merged,
-			Note:      note,
-		}
+	note := ""
+	if sum.Lines > keepRows {
+		note = "Rows are truncated for display (showing first 5000). Summary/anomalies are computed over the scanned portion."
+	}
 
-		httputil.JSON(w, http.StatusOK, resp)
-	})
+	resp := Results{
+		JobID:     jobID,
+		Filename:  header.Filename,
+		SizeBytes: n,
+		SavedTo:   dest,
+		Received:  time.Now().UTC().Format(time.RFC3339),
+		Summary:   sum,
+		Timeline:  timeline,
+		Rows:      rows,
+		Anomalies: merged,
+		Note:      note,
+	}
+
+	httputil.JSON(w, http.StatusOK, resp)
+	log.Println("Upload and analyse Handler - end")
 }
+
+// )
+// }
