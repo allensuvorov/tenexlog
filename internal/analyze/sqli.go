@@ -35,6 +35,14 @@ var sqliPatterns = []struct {
 	{"auth_bypass", regexp.MustCompile(`(?i)'\s*#`)},                                       // '# (MySQL comment)
 	// 02: union_extract - UNION SELECT statements
 	{"union_extract", regexp.MustCompile(`(?i)UNION\s+(ALL\s+)?SELECT`)},
+	// 04: blind_boolean - Boolean-based blind injection
+	{"blind_boolean", regexp.MustCompile(`(?i)\bAND\s+\d+\s*=\s*\d+`)},  // AND 1=1, AND 1=2
+	{"blind_boolean", regexp.MustCompile(`(?i)\bOR\s+\d+\s*=\s*\d+`)},   // OR 1=1
+	// 05: blind_time - Time-based blind injection
+	{"blind_time", regexp.MustCompile(`(?i)\bSLEEP\s*\(\s*\d+\s*\)`)},           // SLEEP(5)
+	{"blind_time", regexp.MustCompile(`(?i)\bBENCHMARK\s*\(`)},                   // BENCHMARK(
+	{"blind_time", regexp.MustCompile(`(?i)\bpg_sleep\s*\(`)},                    // pg_sleep(
+	{"blind_time", regexp.MustCompile(`(?i)\bWAITFOR\s+DELAY\b`)},                // WAITFOR DELAY
 	// 06: stacked - Semicolon followed by SQL statement
 	{"stacked", regexp.MustCompile(`(?i);\s*(SELECT|INSERT|UPDATE|DELETE|DROP|EXEC|WAITFOR)\b`)},
 	// 07: destruction - DROP, DELETE, TRUNCATE
