@@ -35,6 +35,8 @@ var sqliPatterns = []struct {
 	{"auth_bypass", regexp.MustCompile(`(?i)'\s*#`)},                                       // '# (MySQL comment)
 	// 02: union_extract - UNION SELECT statements
 	{"union_extract", regexp.MustCompile(`(?i)UNION\s+(ALL\s+)?SELECT`)},
+	// 06: stacked - Semicolon followed by SQL statement
+	{"stacked", regexp.MustCompile(`(?i);\s*(SELECT|INSERT|UPDATE|DELETE|DROP|EXEC|WAITFOR)\b`)},
 	// 07: destruction - DROP, DELETE, TRUNCATE
 	{"destruction", regexp.MustCompile(`(?i)\bDROP\s+(TABLE|DATABASE|INDEX)`)},
 	{"destruction", regexp.MustCompile(`(?i)\bDELETE\s+FROM\b`)},
