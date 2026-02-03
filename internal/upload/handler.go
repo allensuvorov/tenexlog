@@ -15,6 +15,7 @@ import (
 
 type anyAnom struct {
 	Kind       string     `json:"kind"`
+	Category   string     `json:"category,omitempty"`
 	SrcIP      string     `json:"srcIp"`
 	Minute     *time.Time `json:"minute,omitempty"`
 	FirstSeen  *time.Time `json:"firstSeen,omitempty"`
@@ -26,6 +27,7 @@ type anyAnom struct {
 	UniquePref *int       `json:"uniquePref,omitempty"`
 	Confidence float64    `json:"confidence"`
 	Reason     string     `json:"reason"`
+	Sample     string     `json:"sample,omitempty"`
 }
 
 type Results struct {
@@ -97,7 +99,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	)
 	sensAnoms := analyze.DetectSensitivePaths(rows, minHits, minUnique)
 
-	merged := make([]anyAnom, 0, len(rateAnoms)+len(sensAnoms))
+	const sqliMinHits = 2
+	sqliAnoms := analyze.DetectSQLi(rows, sqliMinHits)
+
+	merged := make([]anyAnom, 0, len(rateAnoms)+len(sensAnoms)+len(sqliAnoms))
 
 	for _, a := range rateAnoms {
 		m := a.Minute
@@ -128,6 +133,22 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			UniquePref: &u,
 			Confidence: s.Confidence,
 			Reason:     s.Reason,
+		})
+	}
+
+	for _, sq := range sqliAnoms {
+		fs, ls := sq.FirstSeen, sq.LastSeen
+		h := sq.Hits
+		merged = append(merged, anyAnom{
+			Kind:       sq.Kind,
+			Category:   sq.Category,
+			SrcIP:      sq.SrcIP,
+			FirstSeen:  &fs,
+			LastSeen:   &ls,
+			Hits:       &h,
+			Confidence: sq.Confidence,
+			Reason:     sq.Reason,
+			Sample:     sq.Sample,
 		})
 	}
 

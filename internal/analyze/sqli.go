@@ -35,6 +35,10 @@ var sqliPatterns = []struct {
 	{"auth_bypass", regexp.MustCompile(`(?i)'\s*#`)},                                       // '# (MySQL comment)
 	// 02: union_extract - UNION SELECT statements
 	{"union_extract", regexp.MustCompile(`(?i)UNION\s+(ALL\s+)?SELECT`)},
+	// 03: error_based - Error-based extraction
+	{"error_based", regexp.MustCompile(`(?i)\bCONVERT\s*\([^,]+,`)},              // CONVERT(int,
+	{"error_based", regexp.MustCompile(`(?i)\bEXTRACTVALUE\s*\(`)},               // EXTRACTVALUE(
+	{"error_based", regexp.MustCompile(`(?i)\bUPDATEXML\s*\(`)},                  // UPDATEXML(
 	// 04: blind_boolean - Boolean-based blind injection
 	{"blind_boolean", regexp.MustCompile(`(?i)\bAND\s+\d+\s*=\s*\d+`)},  // AND 1=1, AND 1=2
 	{"blind_boolean", regexp.MustCompile(`(?i)\bOR\s+\d+\s*=\s*\d+`)},   // OR 1=1
@@ -43,6 +47,13 @@ var sqliPatterns = []struct {
 	{"blind_time", regexp.MustCompile(`(?i)\bBENCHMARK\s*\(`)},                   // BENCHMARK(
 	{"blind_time", regexp.MustCompile(`(?i)\bpg_sleep\s*\(`)},                    // pg_sleep(
 	{"blind_time", regexp.MustCompile(`(?i)\bWAITFOR\s+DELAY\b`)},                // WAITFOR DELAY
+	// 14: whitespace - No space between tokens
+	{"whitespace", regexp.MustCompile(`(?i)'\s*OR\s*\(`)},                        // 'OR(
+	{"whitespace", regexp.MustCompile(`(?i)'\s*AND\s*\(`)},                       // 'AND(
+	{"whitespace", regexp.MustCompile(`(?i)'\s*OR\s*\d`)},                        // 'OR1
+	{"whitespace", regexp.MustCompile(`(?i)'\s*AND\s*\d`)},                       // 'AND1
+	// 17: nosql - NoSQL injection patterns
+	{"nosql", regexp.MustCompile(`\$\s*(gt|gte|lt|lte|ne|eq|regex|where|or|and)\b`)}, // $gt, $ne, etc.
 	// 06: stacked - Semicolon followed by SQL statement
 	{"stacked", regexp.MustCompile(`(?i);\s*(SELECT|INSERT|UPDATE|DELETE|DROP|EXEC|WAITFOR)\b`)},
 	// 07: destruction - DROP, DELETE, TRUNCATE
@@ -136,9 +147,35 @@ func decodePath(path string) string {
 
 // normalizePath prepares path for pattern matching
 func normalizePath(path string) string {
-	// Remove inline comments used for obfuscation
-	path = strings.ReplaceAll(path, "/**/", " ")
+	// Remove inline comments used for obfuscation: /**/ and /*!...*/
+	// First handle empty comments (/**/) - remove completely to rejoin split keywords
+	path = strings.ReplaceAll(path, "/**/", "")
+	// Handle MySQL conditional comments: /*!UNION*/ -> UNION
+	path = removeConditionalComments(path)
 	return path
+}
+
+// removeConditionalComments strips /*!...*/ MySQL conditional comments
+func removeConditionalComments(s string) string {
+	result := s
+	for {
+		start := strings.Index(result, "/*!")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start:], "*/")
+		if end == -1 {
+			break
+		}
+		// Extract content between /*! and */
+		content := result[start+3 : start+end]
+		// Remove optional version number prefix (e.g., /*!50000SELECT*/)
+		for len(content) > 0 && content[0] >= '0' && content[0] <= '9' {
+			content = content[1:]
+		}
+		result = result[:start] + content + result[start+end+2:]
+	}
+	return result
 }
 
 func buildSQLiReason(ip, category string, hits int) string {
