@@ -28,8 +28,17 @@ var sqliPatterns = []struct {
 	Category string
 	Regex    *regexp.Regexp
 }{
+	// 01: auth_bypass - Authentication bypass attempts
+	{"auth_bypass", regexp.MustCompile(`(?i)'\s*(OR|AND)\s+['"]?\d+['"]?\s*=\s*['"]?\d+`)}, // ' OR 1=1, ' OR '1'='1
+	{"auth_bypass", regexp.MustCompile(`(?i)'\s*(OR|AND)\s+['"][^'"]*['"]\s*=\s*['"]`)},   // ' OR 'a'='a
+	{"auth_bypass", regexp.MustCompile(`(?i)'\s*--`)},                                      // '--  (comment after quote)
+	{"auth_bypass", regexp.MustCompile(`(?i)'\s*#`)},                                       // '# (MySQL comment)
 	// 02: union_extract - UNION SELECT statements
 	{"union_extract", regexp.MustCompile(`(?i)UNION\s+(ALL\s+)?SELECT`)},
+	// 07: destruction - DROP, DELETE, TRUNCATE
+	{"destruction", regexp.MustCompile(`(?i)\bDROP\s+(TABLE|DATABASE|INDEX)`)},
+	{"destruction", regexp.MustCompile(`(?i)\bDELETE\s+FROM\b`)},
+	{"destruction", regexp.MustCompile(`(?i)\bTRUNCATE\s+(TABLE\s+)?\w+`)},
 }
 
 // DetectSQLi analyzes events for SQL injection patterns.
