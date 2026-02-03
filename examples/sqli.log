@@ -1,0 +1,36 @@
+2025-08-28T10:00:00Z	6.6.6.1	example.com	GET	/login?user=admin'--	200	1	Mozilla/5.0
+2025-08-28T10:00:10Z	6.6.6.1	example.com	GET	/login?user=' OR '1'='1	200	1	Mozilla/5.0
+2025-08-28T10:00:20Z	6.6.6.2	example.com	GET	/products?id=1 UNION SELECT password FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:00:30Z	6.6.6.2	example.com	GET	/products?id=1 UNION ALL SELECT username,password FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:00:40Z	6.6.6.3	example.com	GET	/page?id=1 AND 1=CONVERT(int,@@version)--	500	1	Mozilla/5.0
+2025-08-28T10:00:50Z	6.6.6.3	example.com	GET	/page?id=1 AND EXTRACTVALUE(1,CONCAT(0x7e,version()))--	500	1	Mozilla/5.0
+2025-08-28T10:01:00Z	6.6.6.4	example.com	GET	/page?id=1 AND 1=1--	200	1	Mozilla/5.0
+2025-08-28T10:01:10Z	6.6.6.4	example.com	GET	/page?id=1 AND 1=2--	200	1	Mozilla/5.0
+2025-08-28T10:01:20Z	6.6.6.5	example.com	GET	/page?id=1; WAITFOR DELAY '0:0:5'--	200	1	Mozilla/5.0
+2025-08-28T10:01:30Z	6.6.6.5	example.com	GET	/page?id=1 AND SLEEP(5)--	200	1	Mozilla/5.0
+2025-08-28T10:01:40Z	6.6.6.6	example.com	GET	/page?id=1; DROP TABLE users--	200	1	Mozilla/5.0
+2025-08-28T10:01:50Z	6.6.6.6	example.com	GET	/page?id=1; SELECT * FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:02:00Z	6.6.6.7	example.com	GET	/page?id=1; DELETE FROM users WHERE 1=1--	200	1	Mozilla/5.0
+2025-08-28T10:02:10Z	6.6.6.7	example.com	GET	/page?id=1; TRUNCATE TABLE logs--	200	1	Mozilla/5.0
+2025-08-28T10:02:20Z	6.6.6.8	example.com	GET	/page?id=1; INSERT INTO users VALUES('hacker','pass')--	200	1	Mozilla/5.0
+2025-08-28T10:02:30Z	6.6.6.8	example.com	GET	/page?id=1; UPDATE users SET role='admin'--	200	1	Mozilla/5.0
+2025-08-28T10:02:40Z	6.6.6.9	example.com	GET	/page?id=1; EXEC xp_cmdshell('dir')--	200	1	Mozilla/5.0
+2025-08-28T10:02:50Z	6.6.6.9	example.com	GET	/page?id=1; EXEC sp_makewebtask '/tmp/out','SELECT * FROM users'--	200	1	Mozilla/5.0
+2025-08-28T10:03:00Z	6.6.6.10	example.com	GET	/page?id=1; SELECT LOAD_FILE('/etc/passwd')--	200	1	Mozilla/5.0
+2025-08-28T10:03:10Z	6.6.6.10	example.com	GET	/page?id=1; SELECT * INTO OUTFILE '/tmp/dump.txt'--	200	1	Mozilla/5.0
+2025-08-28T10:03:20Z	6.6.6.11	example.com	GET	/products?id=1 UN/**/ION SEL/**/ECT * FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:03:30Z	6.6.6.11	example.com	GET	/products?id=1 /*!UNION*/ /*!SELECT*/ password FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:03:40Z	6.6.6.12	example.com	GET	/login?user=%27%20OR%201%3D1--	200	1	Mozilla/5.0
+2025-08-28T10:03:50Z	6.6.6.12	example.com	GET	/login?user=%2527%20OR%201%3D1--	200	1	Mozilla/5.0
+2025-08-28T10:04:00Z	6.6.6.13	example.com	GET	/products?id=1 uNiOn SeLeCt password FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:04:10Z	6.6.6.13	example.com	GET	/products?id=1 UnIoN aLl SeLeCt * FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:04:20Z	6.6.6.14	example.com	GET	/login?user='OR(1=1)--	200	1	Mozilla/5.0
+2025-08-28T10:04:30Z	6.6.6.14	example.com	GET	/login?user='/**/OR/**/1=1--	200	1	Mozilla/5.0
+2025-08-28T10:04:40Z	6.6.6.15	example.com	GET	/page?id=1 UNION SELECT CONCAT(username,':',password) FROM users--	200	1	Mozilla/5.0
+2025-08-28T10:04:50Z	6.6.6.15	example.com	GET	/page?id=1 AND 'x'='x'||'y'--	200	1	Mozilla/5.0
+2025-08-28T10:05:00Z	6.6.6.16	example.com	GET	/register?name=admin'--	200	1	Mozilla/5.0
+2025-08-28T10:05:10Z	6.6.6.16	example.com	GET	/register?name=O'Reilly'; DROP TABLE users--	200	1	Mozilla/5.0
+2025-08-28T10:05:20Z	6.6.6.17	example.com	GET	/api/users?filter={"$gt":""}	200	1	Mozilla/5.0
+2025-08-28T10:05:30Z	6.6.6.17	example.com	GET	/api/users?filter={"$ne":null}	200	1	Mozilla/5.0
+2025-08-28T10:06:00Z	1.1.1.1	example.com	GET	/index.html	200	1	Mozilla/5.0
+2025-08-28T10:06:10Z	1.1.1.1	example.com	GET	/about.html	200	1	Mozilla/5.0
